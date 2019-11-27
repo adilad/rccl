@@ -64,11 +64,15 @@ static ncclResult_t netGetGdrSupport(struct ncclTopoSystem* topo, int64_t busId,
   if (read) { // For reads (sends) only enable under certain conditions
     int gdrReadParam = ncclParamNetGdrRead();
     if (gdrReadParam == 0) return ncclSuccess;
+#if defined(__HIP_PLATFORM_HCC__) || defined(__HCC__) || defined(__HIPCC__)
+    return ncclSuccess;
+#else
     if (gdrReadParam < 0) {
        int nvlink;
        NCCLCHECK(ncclTopoHasNvlink(topo, busId, &nvlink));
        if (!nvlink) return ncclSuccess;
     }
+#endif
   }
 
   // Check if we are close enough that it makes sense to enable GDR

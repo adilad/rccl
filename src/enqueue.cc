@@ -54,7 +54,7 @@
   NCCL_FUNCS3B(coll, copy), \
   NCCL_FUNCS3B(coll, copy)
 
-typedef void(*ncclKern_t)(struct ncclColl);
+typedef void(*ncclKern_t)(struct ncclDevComm*);
 // Must be consistent with the ncclFuncSet enum
 static ncclKern_t const ncclKerns[NCCL_NUM_FUNCTIONS*ncclNumOps*ncclNumTypes*NCCL_NUM_ALGORITHMS*NCCL_NUM_PROTOCOLS] = {
   NCCL_FUNCS2B(ncclBroadcast),
@@ -80,7 +80,7 @@ ncclResult_t ncclLaunchCooperativeKernelMultiDevice(hipLaunchParams *paramsList,
   for (int i = 0; i < numDevices; i++) {
     hipLaunchParams* params = paramsList+i;
     CUDACHECK(hipSetDevice(cudaDevs[i]));
-    hipLaunchKernelGGL(((void (*)(struct ncclColl))params->func), params->gridDim, params->blockDim, params->sharedMem, params->stream, **((struct ncclColl **)(params->args)));
+    hipLaunchKernelGGL(((void (*)(struct ncclDevComm*))params->func), params->gridDim, params->blockDim, params->sharedMem, params->stream, **((struct ncclDevComm ***)(params->args)));
   }
   CUDACHECK(hipSetDevice(savedDev));
   return ncclSuccess;
@@ -98,10 +98,8 @@ ncclResult_t setupLaunch(struct ncclComm* comm, hipLaunchParams* params) {
   // Find the first operation, choose the kernel accordingly and pass it
   // as the first argument.
   struct ncclColl* coll = comm->channels[0].collectives+comm->channels[0].collStart;
-  memcpy(&comm->args, coll, sizeof(struct ncclColl));
-  // As we pass that coll directly, we can free it immediately.
-  STORE(&coll->active, 0);
 
+  comm->args = comm->devComm;
   params->func = (void *)ncclKerns[coll->funcIndex];
   return ncclSuccess;
 }
@@ -194,7 +192,7 @@ ncclResult_t ncclBarrierEnqueueWait(ncclComm_t comm) {
 
   hipLaunchParams *params = comm->myParams;
   if (comm->launchMode == ncclComm::PARALLEL) {
-    hipLaunchKernelGGL(((void (*)(struct ncclColl))params->func), params->gridDim, params->blockDim, params->sharedMem, params->stream, **((struct ncclColl **)(params->args)));
+    hipLaunchKernelGGL(((void (*)(struct ncclDevComm*))params->func), params->gridDim, params->blockDim, params->sharedMem, params->stream, **((struct ncclDevComm ***)(params->args)));
   }
   // Start the network proxies as soon as the kernel has been launched. We can't
   // perform any CUDA call between the two or having a hipFree between the CUDA
